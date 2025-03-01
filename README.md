@@ -1,5 +1,7 @@
 # MateriShell
-> An Alternate Shell (AKA a Desktop Environment, GUI, or DE) for Windows
+> An Alternate Shell (AKA a Desktop Environment, GUI, or DE) for Windows.
+
+> DISCLAIMER: This May Never Actually Exist as it is one of My Little "Pet Projects" most of Which Never Get Finished!
 
 ## About
 
