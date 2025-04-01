@@ -6,29 +6,29 @@ using System.Linq;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using System.Management;  // For WMI WiFi control
+using NAudio.CoreAudioApi; // Add NAudio NuGet package for volume control
 
 public class CustomShell : Form
 {
     private Button startMenuButton;
     private Panel taskbar;
     private ListBox appsMenuList;
-    private NotifyIcon systemTray;
-    private ContextMenuStrip trayMenu;
     private Panel quickSettingsPanel;
     private FlowLayoutPanel pinnedAppsPanel;
+    private Button wifiButton;
+    private Button volumeButton;
 
     [DllImport("user32.dll")]
     static extern bool LockWorkStation();
 
     public CustomShell()
     {
-        // Form setup
         this.Text = "Custom Windows Shell";
         this.FormBorderStyle = FormBorderStyle.None;
         this.WindowState = FormWindowState.Maximized;
         this.BackColor = Color.FromArgb(229, 241, 251);
 
-        // Taskbar
         taskbar = new Panel
         {
             Dock = DockStyle.Bottom,
@@ -36,10 +36,9 @@ public class CustomShell : Form
             BackColor = Color.FromArgb(43, 43, 43)
         };
 
-        // Start Menu Button
         startMenuButton = new Button
         {
-            Text = "⊞", // Windows logo symbol
+            Text = "⊞",
             Font = new Font("Segoe UI", 12),
             FlatStyle = FlatStyle.Flat,
             Width = 48,
@@ -50,7 +49,6 @@ public class CustomShell : Form
         };
         startMenuButton.Click += StartMenuButton_Click;
 
-        // Pinned Apps Panel
         pinnedAppsPanel = new FlowLayoutPanel
         {
             Location = new Point(50, 0),
@@ -58,14 +56,12 @@ public class CustomShell : Form
             AutoSize = true
         };
 
-        // System Tray
         SetupSystemTray();
 
         taskbar.Controls.Add(startMenuButton);
         taskbar.Controls.Add(pinnedAppsPanel);
         this.Controls.Add(taskbar);
 
-        // Apps Menu
         appsMenuList = new ListBox
         {
             Width = 300,
@@ -78,7 +74,6 @@ public class CustomShell : Form
         };
         appsMenuList.SelectedIndexChanged += AppsMenuList_SelectedIndexChanged;
 
-        // Quick Settings Panel
         SetupQuickSettings();
 
         this.Controls.Add(appsMenuList);
@@ -88,7 +83,6 @@ public class CustomShell : Form
 
     private void SetupSystemTray()
     {
-        // System Tray Panel
         Panel trayPanel = new Panel
         {
             Dock = DockStyle.Right,
@@ -96,7 +90,6 @@ public class CustomShell : Form
             BackColor = Color.Transparent
         };
 
-        // Clock
         Label clock = new Label
         {
             Text = DateTime.Now.ToString("HH:mm"),
@@ -107,22 +100,23 @@ public class CustomShell : Form
         };
         clock.Click += (s, e) => quickSettingsPanel.Visible = !quickSettingsPanel.Visible;
 
-        // Timer for clock update
         Timer clockTimer = new Timer { Interval = 1000 };
         clockTimer.Tick += (s, e) => clock.Text = DateTime.Now.ToString("HH:mm");
         clockTimer.Start();
 
-        // Tray icons
-        Button wifi = new Button { Text = "WiFi", FlatStyle = FlatStyle.Flat, Width = 40, Height = 40, ForeColor = Color.White };
-        Button volume = new Button { Text = "Vol", FlatStyle = FlatStyle.Flat, Width = 40, Height = 40, ForeColor = Color.White };
+        wifiButton = new Button { Text = "WiFi", FlatStyle = FlatStyle.Flat, Width = 40, Height = 40, ForeColor = Color.White };
+        volumeButton = new Button { Text = "Vol", FlatStyle = FlatStyle.Flat, Width = 40, Height = 40, ForeColor = Color.White };
         Button power = new Button { Text = "Pwr", FlatStyle = FlatStyle.Flat, Width = 40, Height = 40, ForeColor = Color.White };
 
+        wifiButton.Click += ToggleWifi;
+        volumeButton.Click += ToggleVolume;
+
         trayPanel.Controls.Add(clock);
-        trayPanel.Controls.Add(wifi);
-        trayPanel.Controls.Add(volume);
+        trayPanel.Controls.Add(wifiButton);
+        trayPanel.Controls.Add(volumeButton);
         trayPanel.Controls.Add(power);
-        wifi.Location = new Point(110, 4);
-        volume.Location = new Point(150, 4);
+        wifiButton.Location = new Point(110, 4);
+        volumeButton.Location = new Point(150, 4);
         power.Location = new Point(190, 4);
 
         taskbar.Controls.Add(trayPanel);
@@ -140,12 +134,14 @@ public class CustomShell : Form
             BorderStyle = BorderStyle.FixedSingle
         };
 
-        // Quick Settings Buttons
         Button wifiToggle = new Button { Text = "Wi-Fi", Width = 80, Height = 80, ForeColor = Color.White };
         Button bluetoothToggle = new Button { Text = "Bluetooth", Width = 80, Height = 80, ForeColor = Color.White };
         Button hotspotToggle = new Button { Text = "Hotspot", Width = 80, Height = 80, ForeColor = Color.White };
         Button airplaneToggle = new Button { Text = "Airplane", Width = 80, Height = 80, ForeColor = Color.White };
         Button accessibilityToggle = new Button { Text = "Accessibility", Width = 80, Height = 80, ForeColor = Color.White };
+
+        wifiToggle.Click += ToggleWifi;
+        // Bluetooth, Hotspot, Airplane Mode would need additional APIs
 
         wifiToggle.Location = new Point(20, 20);
         bluetoothToggle.Location = new Point(110, 20);
@@ -153,7 +149,6 @@ public class CustomShell : Form
         airplaneToggle.Location = new Point(20, 110);
         accessibilityToggle.Location = new Point(110, 110);
 
-        // Power options
         Button lockBtn = new Button { Text = "Lock", Width = 80, ForeColor = Color.White };
         Button signOutBtn = new Button { Text = "Sign Out", Width = 80, ForeColor = Color.White };
         Button powerBtn = new Button { Text = "Power", Width = 80, ForeColor = Color.White };
@@ -172,6 +167,63 @@ public class CustomShell : Form
         });
 
         this.Controls.Add(quickSettingsPanel);
+    }
+
+    private void ToggleWifi(object sender, EventArgs e)
+    {
+        try
+        {
+            bool isEnabled = IsWifiEnabled();
+            SetWifiEnabled(!isEnabled);
+            wifiButton.Text = IsWifiEnabled() ? "WiFi On" : "WiFi Off";
+            ((Button)quickSettingsPanel.Controls[0]).Text = IsWifiEnabled() ? "Wi-Fi On" : "Wi-Fi Off";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"WiFi toggle error: {ex.Message}");
+        }
+    }
+
+    private void ToggleVolume(object sender, EventArgs e)
+    {
+        try
+        {
+            var enumerator = new MMDeviceEnumerator();
+            var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            float currentVolume = device.AudioEndpointVolume.MasterVolumeLevelScalar;
+            device.AudioEndpointVolume.MasterVolumeLevelScalar = currentVolume < 0.5f ? 1.0f : 0.0f;
+            volumeButton.Text = device.AudioEndpointVolume.MasterVolumeLevelScalar > 0 ? "Vol On" : "Vol Off";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Volume toggle error: {ex.Message}");
+        }
+    }
+
+    private bool IsWifiEnabled()
+    {
+        using (var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_NetworkAdapter WHERE NetConnectionID = 'Wi-Fi'"))
+        {
+            foreach (ManagementObject obj in searcher.Get())
+            {
+                return (bool)obj["NetEnabled"];
+            }
+        }
+        return false;
+    }
+
+    private void SetWifiEnabled(bool enable)
+    {
+        using (var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_NetworkAdapter WHERE NetConnectionID = 'Wi-Fi'"))
+        {
+            foreach (ManagementObject obj in searcher.Get())
+            {
+                if (enable)
+                    obj.InvokeMethod("Enable", null);
+                else
+                    obj.InvokeMethod("Disable", null);
+            }
+        }
     }
 
     private void PopulateTaskbarPins()
